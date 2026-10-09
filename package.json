@@ -1,22 +1,41 @@
 {
   "name": "@reactll/connect",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Reactll Connect for Next.js: visits, clicks, form leads and site health for your Reactll dashboard.",
-  "keywords": ["nextjs", "analytics", "leads", "reactll"],
+  "keywords": [
+    "nextjs",
+    "analytics",
+    "leads",
+    "reactll"
+  ],
   "homepage": "https://reactll.com",
-  "repository": { "type": "git", "url": "git+https://github.com/Reactll/connect-next.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Reactll/connect-next.git"
+  },
   "license": "MIT",
   "author": "Reactor Technology (https://reactll.com)",
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./server": { "types": "./dist/server.d.ts", "default": "./dist/server.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test test/"
+    "test": "npm run build && node --test test/",
+    "prepare": "tsc -p tsconfig.json"
   },
   "peerDependencies": {
     "next": ">=13.4",

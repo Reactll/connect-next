@@ -45,3 +45,29 @@ test('the health check answers only a signed Reactll request', async () => {
   const bad = await GET(new Request('https://site.test/api/reactll/health', { headers: { 'x-reactll-timestamp': ts, 'x-reactll-signature': 'f'.repeat(64) } }));
   assert.equal(bad.status, 401);
 });
+
+test('a script tag for any template, with only the public key', async () => {
+  const { scriptTag } = await import('../dist/server.js');
+  assert.equal(scriptTag(), '<script src="https://connect.example.test/v1/c.js" data-site="rc_aaaaaaaaaaaaaaaaaaaa" defer></script>');
+  assert.equal(scriptTag('nope'), '');
+});
+
+test('express / node:http middleware answers signed health and passes everything else on', async () => {
+  const { expressHealth } = await import('../dist/server.js');
+  const http = await import('node:http');
+  const mw = expressHealth();
+  const server = http.createServer((req, res) => mw(req, res, () => { res.statusCode = 204; res.end(); }));
+  await new Promise((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  globalThis.fetch = (await import('node:http')) && globalThis.__realFetch ? globalThis.__realFetch : globalThis.fetch;
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = createHmac('sha256', 'secret-123').update(`${ts}.health`).digest('hex');
+  const get = (path, headers = {}) => new Promise((resolve) => http.get(base + path, { headers }, (res) => { let b = ''; res.on('data', (c) => (b += c)); res.on('end', () => resolve({ status: res.statusCode, body: b })); }));
+
+  const ok = await get('/api/reactll/health', { 'x-reactll-timestamp': ts, 'x-reactll-signature': sig });
+  assert.equal(ok.status, 200);
+  assert.equal(JSON.parse(ok.body).platform === 'next' || JSON.parse(ok.body).platform === 'node', true);
+  assert.equal((await get('/api/reactll/health')).status, 401);
+  assert.equal((await get('/somewhere-else')).status, 204);
+  server.close();
+});

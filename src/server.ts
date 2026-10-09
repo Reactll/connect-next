@@ -84,6 +84,16 @@ export async function submitLeadFromFormData(form: string, data: FormData, optio
   return submitLead(form, fields, { ...options, pv: options.pv ?? pv, page: options.page ?? options.headers?.get('referer') ?? null });
 }
 
+/**
+ * The script tag for any server-rendered page (Express/EJS, Handlebars, Fastify, Nuxt, Astro…), or ''
+ * when not connected. Put it in the <head>. Only the public site key is in it.
+ */
+export function scriptTag(token?: string): string {
+  const c = credentials(token);
+
+  return c ? `<script src="${c.u}/c.js" data-site="${c.k}" defer></script>` : '';
+}
+
 function versionOf(pkg: string): string | undefined {
   try {
     return (createRequire(import.meta.url)(`${pkg}/package.json`) as { version?: string }).version;
@@ -114,7 +124,7 @@ export async function GET(request: Request): Promise<Response> {
 
   return Response.json(
     {
-      platform: 'next',
+      platform: versionOf('next') ? 'next' : 'node',
       version: VERSION,
       runtime: Object.fromEntries(Object.entries({
         next: versionOf('next'),
@@ -129,3 +139,40 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export const dynamic = 'force-dynamic';
+
+/** The health answer as plain data (platform and versions), for any framework. */
+export async function health(request: Request): Promise<Response> {
+  return GET(request);
+}
+
+type NodeReq = { method?: string; url?: string; originalUrl?: string; headers: Record<string, string | string[] | undefined> };
+type NodeRes = { statusCode: number; setHeader(name: string, value: string): unknown; end(body?: string): unknown };
+
+/**
+ * Express / Connect (and plain node:http) middleware answering Reactll's hourly health question at
+ * GET /api/reactll/health. Other requests pass through.
+ *
+ *   app.use(expressHealth());
+ */
+export function expressHealth(path = '/api/reactll/health') {
+  return async (req: NodeReq, res: NodeRes, next?: () => void) => {
+    const url = (req.originalUrl ?? req.url ?? '').split('?')[0];
+    if ((req.method ?? 'GET') !== 'GET' || url !== path) {
+      next?.();
+
+      return;
+    }
+    const header = (name: string) => {
+      const v = req.headers[name];
+
+      return Array.isArray(v) ? v[0] : (v ?? '');
+    };
+    const answer = await GET(new Request('http://localhost' + path, {
+      headers: { 'x-reactll-timestamp': header('x-reactll-timestamp'), 'x-reactll-signature': header('x-reactll-signature') },
+    }));
+    res.statusCode = answer.status;
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(await answer.text());
+  };
+}

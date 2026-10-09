@@ -1,6 +1,6 @@
-# Reactll Connect for Next.js
+# Reactll Connect for Next.js and Node.js
 
-Connects a Next.js site to its [Reactll](https://reactll.com) dashboard: visits, calls, WhatsApp and
+Connects a Next.js or any Node.js site (Express, Fastify, Nuxt, Remix, Astro, Hono…) to its [Reactll](https://reactll.com) dashboard: visits, calls, WhatsApp and
 directions clicks, form leads and site health. Built and maintained by **Reactor Technology**.
 
 ## Install
@@ -53,6 +53,23 @@ export async function contact(formData: FormData) {
 
 The script stamps every form with the page view id (`_rc_pv`), so Reactll ties the lead to the visit it
 came from. `submitLead(form, fields, options)` takes a plain object instead. Neither ever throws.
+
+## Any other Node.js app
+
+The same package, without Next.js or React (they are optional):
+
+```js
+import { scriptTag, expressHealth, submitLead } from '@reactll/connect/server';
+
+app.use(expressHealth());                       // Express / Connect / node:http — GET /api/reactll/health
+res.render('page', { reactll: scriptTag() });   // put {{{ reactll }}} / <%- reactll %> in the <head>
+
+// after your form was validated and saved:
+await submitLead('Contact', { name, email, message }, { pv: req.body._rc_pv, page: req.get('referer') });
+```
+
+Frameworks on web `Request`/`Response` (Hono, Remix, Nuxt/h3, Astro, Bun, Deno): route
+`GET /api/reactll/health` to `health(request)` from `@reactll/connect/server`.
 
 ## License
 

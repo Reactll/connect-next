@@ -132,6 +132,8 @@ export async function GET(request: Request): Promise<Response> {
         node: process.version.replace(/^v/, ''),
         environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV,
         host: process.env.VERCEL ? 'Vercel' : undefined,
+        // Reactll counts the site's days on this clock (UTC is read as "not set"; set TZ to override).
+        timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
       }).filter(([, v]) => v)),
     },
     { headers: { 'Cache-Control': 'no-store' } },

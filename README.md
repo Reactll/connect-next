@@ -71,6 +71,15 @@ await submitLead('Contact', { name, email, message }, { pv: req.body._rc_pv, pag
 Frameworks on web `Request`/`Response` (Hono, Remix, Nuxt/h3, Astro, Bun, Deno): route
 `GET /api/reactll/health` to `health(request)` from `@reactll/connect/server`.
 
+## Content-Security-Policy
+
+If the site sends a CSP header, allow Reactll Connect in it, or the browser blocks the script and its beacons:
+
+```
+script-src  … https://connect.reactll.com
+connect-src … https://connect.reactll.com
+```
+
 ## License
 
 MIT © Reactor Technology

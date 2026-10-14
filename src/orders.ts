@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { credentials } from './token.js';
+import { normaliseSubscription, type ContractSubscription, type SubscriptionInput } from './subscriptions.js';
 
 /**
  * Orders as the Reactll contract has them (POST /v1/orders) — and nothing more. Personal data is minimal by
@@ -85,6 +86,8 @@ export interface OrderInput {
   visit?: string | null;
   /** Your admin page for this payment, or the Stripe dashboard URL. */
   admin_url?: string | null;
+  /** The subscription this payment belongs to (an invoice): Reactll links them. Currency and customer default to the order's. */
+  subscription?: Partial<SubscriptionInput> & { id: string | number } | null;
 }
 
 export interface ContractOrder {
@@ -109,6 +112,7 @@ export interface ContractOrder {
   source: { type: string | null; source: string | null; medium: string | null; campaign: string | null; referrer: string | null; device: string | null } | null;
   visit: string | null;
   admin_url: string | null;
+  subscription: ContractSubscription | null;
 }
 
 const ZERO_DECIMALS = ['BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'UGX', 'UYI', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'];
@@ -119,7 +123,8 @@ const STRIPE_THREE = ['BHD', 'JOD', 'KWD', 'OMR', 'TND'];
 
 const decimals = (currency: string) => (ZERO_DECIMALS.includes(currency) ? 0 : THREE_DECIMALS.includes(currency) ? 3 : 2);
 
-function money(value: unknown, currency: string): string | null {
+/** @internal shared with subscriptions */
+export function money(value: unknown, currency: string): string | null {
   const raw = typeof value === 'string' ? value.replace(/[,\s]/g, '') : value;
   if (typeof raw !== 'number' && !(typeof raw === 'string' && raw !== '' && Number.isFinite(Number(raw)))) return null;
   const n = Number(raw);
@@ -130,7 +135,8 @@ function money(value: unknown, currency: string): string | null {
   return /^-0(\.0+)?$/.test(out) ? out.slice(1) : out;
 }
 
-function text(value: unknown, max: number): string | null {
+/** @internal shared with subscriptions */
+export function text(value: unknown, max: number): string | null {
   if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') return null;
   const out = String(value).replace(/<[^>]*>/g, '').trim();
 
@@ -138,7 +144,8 @@ function text(value: unknown, max: number): string | null {
 }
 
 /** ISO 8601 with offset (UTC: +00:00), from a Date, an ISO string or unix seconds (or milliseconds). */
-function date(value: unknown): string | null {
+/** @internal shared with subscriptions */
+export function date(value: unknown): string | null {
   let d: Date | null = null;
   if (value instanceof Date) d = value;
   else if (typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value.trim()))) {
@@ -164,7 +171,8 @@ export function customerIdKey(id: string | number | null | undefined, secret: st
   return clean && secret ? createHmac('sha256', secret).update(`id:${clean}`).digest('hex') : null;
 }
 
-function label(c: OrderCustomerInput): string | null {
+/** @internal shared with subscriptions */
+export function label(c: OrderCustomerInput): string | null {
   let first = text(c.first_name, 60);
   let last = text(c.last_name, 60);
   if (first === null && last === null) {
@@ -278,6 +286,15 @@ export function normaliseOrder(input: OrderInput, secret: string | null | undefi
     source: Object.values(source).some((v) => v !== null) ? source : null,
     visit: UUID.test(visit) ? visit : null,
     admin_url: adminUrl,
+    subscription: o.subscription && typeof o.subscription === 'object'
+      ? normaliseSubscription({
+        currency,
+        email: typeof email === 'string' ? email : null,
+        customer_id: typeof userId === 'string' || typeof userId === 'number' ? userId : null,
+        customer: c,
+        ...(o.subscription as Partial<SubscriptionInput>),
+      } as SubscriptionInput, secret)
+      : null,
   };
 }
 
@@ -324,7 +341,8 @@ interface StripeLineLike {
   pricing?: { price_details?: { product?: string | null } | null } | null;
 }
 
-function fromSmallest(amount: number, currency: string): string {
+/** @internal shared with subscriptions */
+export function fromSmallest(amount: number, currency: string): string {
   const divisor = STRIPE_ZERO.includes(currency) ? 1 : STRIPE_THREE.includes(currency) ? 1000 : 100;
 
   return (amount / divisor).toFixed(decimals(currency));

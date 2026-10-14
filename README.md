@@ -165,6 +165,41 @@ Vercel's production URL, and has to match the site's address in Reactll.
 const { sendOrders, submitLead } = await import('@reactll/connect/server');
 ```
 
+### Subscriptions (MRR, churn, trials)
+
+A subscription business also sends the subscriptions themselves (`POST /v1/subscriptions`): Reactll counts MRR, new
+and cancelled subscribers and trials from them, while the paid invoices stay the revenue. Send one when it starts,
+renews, changes plan, fails to renew or is cancelled — or resend them all from a cron: a repeat with an older or equal
+`updated_at` changes nothing.
+
+```ts
+import { sendSubscriptions, fromStripeSubscription, sendOrders } from '@reactll/connect/server';
+
+await sendSubscriptions({
+  id: sub.id,
+  plan: 'Pro · Monthly',
+  status: 'active',            // trialing, active, past_due, paused, canceled (cancelled / expired / unpaid accepted)
+  currency: 'USD',
+  amount: 9.99,                // per interval, after discounts, excl. tax
+  interval: 'month',           // day, week, month, year (monthly / yearly accepted)
+  started_at: sub.createdAt,
+  current_period_end: sub.renewsAt,
+  ends_at: sub.endsAt,         // cancelled at period end: access and MRR run to here
+  updated_at: sub.updatedAt,
+  email: user.email,           // or customer_id — hashed, never sent
+  customer: { name: user.name },
+});
+
+// customer.subscription.* webhooks (pass plan / email when the object only has ids)
+const s = fromStripeSubscription(event.data.object, { plan: 'Pro', email });
+if (s) await sendSubscriptions(s);
+
+// Or on the invoice order: `subscription` links the payment to it (currency and customer come from the order)
+await sendOrders({ ...invoiceOrder, subscription: { id: sub.id, status: 'active', amount: 9.99, interval: 'month' } });
+```
+
+No retry queue: on `reason: 'unreachable'` send again (answer the webhook 500, or let the next cron run).
+
 ## Environment
 
 | Variable | Default | |

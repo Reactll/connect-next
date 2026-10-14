@@ -2,6 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { capabilities, modules, type Modules } from './modules.js';
 import { normaliseOrder, type ContractOrder, type OrderInput } from './orders.js';
+import { normaliseSubscription, type ContractSubscription, type SubscriptionInput } from './subscriptions.js';
 import { credentials, VERSION, type Credentials } from './token.js';
 
 export { VERSION, credentials } from './token.js';
@@ -18,6 +19,13 @@ export {
   type ContractOrder,
   type StripeInvoiceLike,
 } from './orders.js';
+export {
+  normaliseSubscription,
+  fromStripeSubscription,
+  type SubscriptionInput,
+  type ContractSubscription,
+  type StripeSubscriptionLike,
+} from './subscriptions.js';
 
 type Fields = Record<string, unknown>;
 
@@ -214,6 +222,59 @@ export async function sendOrders(orders: OrderInput | OrderInput[], options: Ord
       if (typeof json.sales_allowed === 'boolean') t.salesAllowed = json.sales_allowed;
       lastSentAt = new Date().toISOString();
       // Switched off or not agreed in Reactll: nothing will be stored, the rest is not sent.
+      if (typeof json.reason === 'string' && json.reason) return result(true, json.reason, t);
+      continue;
+    }
+    if (status >= 500 || status === 429) return result(false, 'unreachable', t);
+    t.skipped += batch.length;
+
+    return result(false, 'refused', t);
+  }
+
+  return result(true, null, t);
+}
+
+export interface SubscriptionsOptions extends Omit<OrdersOptions, 'backfill' | 'deleted'> {
+  /** Subscription ids removed in the app: Reactll deletes them. */
+  deleted?: (string | number)[];
+}
+
+/**
+ * Send subscriptions (started, renewed, plan changed, failed to renew, cancelled) to Reactll, 50 per request,
+ * signed: MRR, churn and trials are counted from them. Idempotent — a repeat with an older or equal `updated_at`
+ * changes nothing, so a scheduled full resend is fine. No retry queue: on `unreachable` the caller sends again
+ * (a webhook answered 500, the next cron run). Never throws.
+ */
+export async function sendSubscriptions(subscriptions: SubscriptionInput | SubscriptionInput[], options: SubscriptionsOptions = {}): Promise<ConnectResult> {
+  if (!modules({ sales: options.sales }).sales) return result(true, 'switched_off', { salesAllowed: false });
+  const c = credentials(options.token);
+  if (!c) return result(false, 'not_connected');
+  const site = siteUrl(options.siteUrl);
+  if (!site) return result(false, 'no_site_url');
+
+  const byId = new Map<string, ContractSubscription>();
+  let skipped = 0;
+  for (const subscription of Array.isArray(subscriptions) ? subscriptions : [subscriptions]) {
+    const normal = normaliseSubscription(subscription, c.s);
+    if (!normal) skipped++;
+    else byId.set(normal.id, normal);
+  }
+  const pending = [...byId.values()];
+  const deleted = [...new Set((options.deleted ?? []).map((id) => String(id).trim().slice(0, 190)).filter(Boolean))];
+  const t = { stored: 0, updated: 0, deleted: 0, skipped, salesAllowed: null as boolean | null };
+
+  while (pending.length || deleted.length) {
+    const batch = pending.splice(0, BATCH);
+    const gone = deleted.splice(0, BATCH);
+    const answer = await post(c, 'subscriptions', JSON.stringify({ site_url: site, subscriptions: batch, deleted: gone }), options.timeoutMs ?? 10_000);
+
+    if (!answer) return result(false, 'unreachable', t);
+    const { status, json } = answer;
+    if (status === 409 && json.error === 'host') return result(false, 'host', t);
+    if (status === 409) continue;
+    if (status >= 200 && status < 300) {
+      for (const key of ['stored', 'updated', 'deleted', 'skipped'] as const) t[key] += Number(json[key] ?? 0) || 0;
+      if (typeof json.sales_allowed === 'boolean') t.salesAllowed = json.sales_allowed;
       if (typeof json.reason === 'string' && json.reason) return result(true, json.reason, t);
       continue;
     }

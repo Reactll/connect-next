@@ -5,7 +5,7 @@
  * endpoint, the site's public key and its secret. Only the endpoint and the public key ever reach
  * the browser.
  */
-export const VERSION = '1.1.1';
+export const VERSION = '1.2.0';
 
 export interface Credentials {
   /** Endpoint, e.g. https://connect.reactll.com/v1 */

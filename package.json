@@ -1,7 +1,7 @@
 {
   "name": "@reactll/connect",
-  "version": "1.1.1",
-  "description": "Reactll Connect for Next.js and any Node.js app: visits, clicks, form leads and site health for your Reactll dashboard.",
+  "version": "1.2.0",
+  "description": "Reactll Connect for Next.js and any Node.js app: visits, clicks, form leads, sales and site health for your Reactll dashboard.",
   "keywords": [
     "nextjs",
     "nodejs",
